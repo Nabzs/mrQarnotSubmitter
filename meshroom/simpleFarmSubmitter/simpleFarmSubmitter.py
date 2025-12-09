@@ -6,16 +6,17 @@ import logging
 import getpass
 import re
 
-import simpleFarm
+# import simpleFarm
 from meshroom.core.desc import Level
 from meshroom.core.submitter import BaseSubmitter
 
 currentDir = os.path.dirname(os.path.realpath(__file__))
 binDir = os.path.dirname(os.path.dirname(os.path.dirname(currentDir)))
-
+print (currentDir)
 class SimpleFarmSubmitter(BaseSubmitter):
 
     filepath = os.environ.get('SIMPLEFARMCONFIG', os.path.join(currentDir, 'tractorConfig.json'))
+    print(filepath)
     config = json.load(open(filepath))
 
     reqPackages = []
@@ -73,66 +74,67 @@ class SimpleFarmSubmitter(BaseSubmitter):
             self.environment['PROD_MOUNT'] = os.environ['PROD_MOUNT']
 
     def createTask(self, meshroomFile, node):
-        tags = self.DEFAULT_TAGS.copy()  # copy to not modify default tags
-        nbFrames = node.size
-        arguments = {}
-        parallelArgs = ''
-        print('node: ', node.name)
-        if node.isParallelized:
-            blockSize, fullSize, nbBlocks = node.nodeDesc.parallelization.getSizes(node)
-            parallelArgs = ' --iteration @start'
-            arguments.update({'start': 0, 'end': nbBlocks - 1, 'step': 1})
+        pass
+        # tags = self.DEFAULT_TAGS.copy()  # copy to not modify default tags
+        # nbFrames = node.size
+        # arguments = {}
+        # parallelArgs = ''
+        # print('node: ', node.name)
+        # if node.isParallelized:
+        #     blockSize, fullSize, nbBlocks = node.nodeDesc.parallelization.getSizes(node)
+        #     parallelArgs = ' --iteration @start'
+        #     arguments.update({'start': 0, 'end': nbBlocks - 1, 'step': 1})
 
-        tags['nbFrames'] = nbFrames
-        tags['prod'] = self.prod
-        allRequirements = set()
-        allRequirements.update(self.config['CPU'].get(node.nodeDesc.cpu.name, []))
-        allRequirements.update(self.config['RAM'].get(node.nodeDesc.ram.name, []))
-        allRequirements.update(self.config['GPU'].get(node.nodeDesc.gpu.name, []))
+        # tags['nbFrames'] = nbFrames
+        # tags['prod'] = self.prod
+        # allRequirements = set()
+        # allRequirements.update(self.config['CPU'].get(node.nodeDesc.cpu.name, []))
+        # allRequirements.update(self.config['RAM'].get(node.nodeDesc.ram.name, []))
+        # allRequirements.update(self.config['GPU'].get(node.nodeDesc.gpu.name, []))
 
-        executable = 'meshroom_compute' if self.reqPackages else os.path.join(binDir, 'meshroom_compute')
-        taskCommand = f"{executable} --node {node.name} \"{meshroomFile}\" {parallelArgs} --extern"
-        task = simpleFarm.Task(
-            name=node.name, command=taskCommand, tags=tags, rezPackages=self.reqPackages,
-            requirements={'service': str(','.join(allRequirements))}, **arguments)
-        return task
+        # executable = 'meshroom_compute' if self.reqPackages else os.path.join(binDir, 'meshroom_compute')
+        # taskCommand = f"{executable} --node {node.name} \"{meshroomFile}\" {parallelArgs} --extern"
+        # task = simpleFarm.Task(
+        #     name=node.name, command=taskCommand, tags=tags, rezPackages=self.reqPackages,
+        #     requirements={'service': str(','.join(allRequirements))}, **arguments)
+        # return task
 
     def submit(self, nodes, edges, filepath, submitLabel="{projectName}"):
+        pass
+        # projectName = os.path.splitext(os.path.basename(filepath))[0]
+        # name = submitLabel.format(projectName=projectName)
 
-        projectName = os.path.splitext(os.path.basename(filepath))[0]
-        name = submitLabel.format(projectName=projectName)
+        # comment = filepath
+        # nbFrames = max([node.size for node in nodes])
 
-        comment = filepath
-        nbFrames = max([node.size for node in nodes])
+        # mainTags = {
+        #     'prod': self.prod,
+        #     'nbFrames': str(nbFrames),
+        #     'comment': comment,
+        # }
+        # allRequirements = list(self.config.get('BASE', []))
 
-        mainTags = {
-            'prod': self.prod,
-            'nbFrames': str(nbFrames),
-            'comment': comment,
-        }
-        allRequirements = list(self.config.get('BASE', []))
+        # # Create Job Graph
+        # job = simpleFarm.Job(name,
+        #         tags=mainTags,
+        #         requirements={'service': str(','.join(allRequirements))},
+        #         environment=self.environment,
+        #         user=os.environ.get('FARM_USER', os.environ.get('USER', getpass.getuser())),
+        #         )
 
-        # Create Job Graph
-        job = simpleFarm.Job(name,
-                tags=mainTags,
-                requirements={'service': str(','.join(allRequirements))},
-                environment=self.environment,
-                user=os.environ.get('FARM_USER', os.environ.get('USER', getpass.getuser())),
-                )
+        # nodeNameToTask = {}
 
-        nodeNameToTask = {}
+        # for node in nodes:
+        #     task = self.createTask(filepath, node)
+        #     job.addTask(task)
+        #     nodeNameToTask[node.name] = task
 
-        for node in nodes:
-            task = self.createTask(filepath, node)
-            job.addTask(task)
-            nodeNameToTask[node.name] = task
+        # for u, v in edges:
+        #     nodeNameToTask[u.name].dependsOn(nodeNameToTask[v.name])
 
-        for u, v in edges:
-            nodeNameToTask[u.name].dependsOn(nodeNameToTask[v.name])
-
-        if self.engine == 'tractor-dummy':
-            job.submit(share=self.share, engine='tractor', execute=True)
-            return True
-        else:
-            res = job.submit(share=self.share, engine=self.engine)
-            return len(res) > 0
+        # if self.engine == 'tractor-dummy':
+        #     job.submit(share=self.share, engine='tractor', execute=True)
+        #     return True
+        # else:
+        #     res = job.submit(share=self.share, engine=self.engine)
+        #     return len(res) > 0

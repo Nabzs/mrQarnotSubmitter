@@ -13,7 +13,7 @@ from meshroom.core.submitter import BaseSubmitter
 
 currentDir = os.path.dirname(os.path.realpath(__file__))
 
-# ⚠️ évite de committer ce token dans un repo public
+# ⚠️ évite de committer ce token
 token = "84fb43be76e78533713fbce9fc73d4e16a8ddbe6bb57256257c88c1f2ae2c31e99b98e342f0562398e13ea17734f02528dda78aae32f2529c2ec5d7338ff6c92"
 
 

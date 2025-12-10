@@ -20,8 +20,14 @@ Window {
     property var palette
 
     // Signal et erreur
-    signal acceptToken(string token)
+    signal acceptToken(string token, var root)
+    signal cancel(var root)
+
     property string errorMessage: ""
+
+    onClosing: {
+        root.cancel()
+    }
 
     // --- FOND DE LA FENÊTRE ---
     // On utilise un Rectangle pour forcer la couleur de fond
@@ -42,6 +48,32 @@ Window {
             color: root.palette ? root.palette.text : "white"
             font.bold: true
             font.pixelSize: 14
+        }
+
+        Text {
+            // 1. Le lien en HTML
+            text: 'Pas de compte ? <a href="https://console.qarnot.com">Obtenir un token ici</a>'
+            
+            // 2. Important : Activer le RichText pour que le HTML soit compris
+            textFormat: Text.RichText
+            
+            // 3. Style (utilise votre palette)
+            color: root.palette ? root.palette.text : "white"
+            linkColor: "#42a5f5" // Un bleu clair pour le lien (ou root.palette.highlight)
+            
+            Layout.alignment: Qt.AlignRight // Aligné à droite par exemple
+            
+            // 4. Action au clic
+            onLinkActivated: {
+                Qt.openUrlExternally(link)
+            }
+
+            // Optionnel : Changer le curseur au survol (pour montrer que c'est cliquable)
+            MouseArea {
+                anchors.fill: parent
+                acceptedButtons: Qt.NoButton // Laisse le clic passer au Text
+                cursorShape: Qt.PointingHandCursor
+            }
         }
 
         TextField {
@@ -92,7 +124,7 @@ Window {
                     color: parent.down && root.palette ? root.palette.mid : (root.palette ? root.palette.button : "#444"); 
                     radius: 4 
                 }
-                onClicked: root.close()
+                onClicked: root.cancel(root); 
             }
 
             Button {
@@ -115,8 +147,12 @@ Window {
                     radius: 4
                 }
 
-                onClicked: root.acceptToken(tokenField.text)
+                onClicked: root.acceptToken(tokenField.text, root);
             }
         }
+    }
+
+    Component.onDestruction : {
+        console.log("AUTODESTRUCTION!!!")
     }
 }

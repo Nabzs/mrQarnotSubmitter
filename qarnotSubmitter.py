@@ -13,8 +13,8 @@ from meshroom.core.submitter import BaseSubmitter
 
 currentDir = os.path.dirname(os.path.realpath(__file__))
 
-# ⚠️ évite de committer ce token
-token = "84fb43be76e78533713fbce9fc73d4e16a8ddbe6bb57256257c88c1f2ae2c31e99b98e342f0562398e13ea17734f02528dda78aae32f2529c2ec5d7338ff6c92"
+# ⚠️ évite de committer ce token dans un repo public
+token = "99d2c6ea3ebda5293dfd2e4de084297dce7903ee30c2cbd56d47a3759e82a75b058b8f923cc5c0aad0f2358456b989e6b904199775a431b372dc0f7a42983304"
 
 
 class QarnotSubmitter(BaseSubmitter):
@@ -43,11 +43,7 @@ class QarnotSubmitter(BaseSubmitter):
 
         print(f"Syncing bucket '{bucket_name}' to local folder '{folder_path}'...")
         source_bucket.sync_remote_to_local(folder_path)
-        print("Sync complete.")
-        
-        
-    # def create_tmp_path(filepath):
-    #     graph = pg.loadGraph(args.grapFile)
+        print("Sync complete.")        
         
 
     def load_mg_file(self, filepath):
@@ -78,9 +74,14 @@ class QarnotSubmitter(BaseSubmitter):
         folder_path = os.path.dirname(mg_data["graph"]["CameraInit_1"]["inputs"]["viewpoints"][0]["path"])
         
         for viewpoint in updated_data["graph"]["CameraInit_1"]["inputs"]["viewpoints"]:
-            updated_data["path"] = os.path.abspath("");
+            viewpoint["path"] = os.path.join("/job/", os.path.basename(viewpoint["path"]))
         
         return updated_data, folder_path
+    
+    # def get_mg_file(self, output_bucket, tmp_file_path):
+    #     output_bucket.get_file(os.path.basename(tmp_file_path) ,os.path.abspath(tmp_file_path))
+
+            
     
     def save_tmp_mg_file(self, data, temp_path, filename=None):
         """
@@ -124,6 +125,41 @@ class QarnotSubmitter(BaseSubmitter):
             os.remove(path)
             return True
         return False
+    
+    
+    def download_cache_from_bucket(self, bucket_name, local_file_path, tmp_file_path):
+        conn = qarnot.connection.Connection(client_token=token)
+        output_bucket = self.setup_bucket(conn, bucket_name)
+        
+        tmp_graph = pg.loadGraph(tmp_file_path)
+        local_graph = pg.loadGraph(local_file_path)
+        
+        local_dir = os.path.join(os.path.dirname(local_file_path), "MeshroomCache")
+        tmp_dir = "MeshroomCache"
+        
+        for i in range(len(local_graph.nodes)):
+            local_node = local_graph.nodes[i]
+            tmp_node = tmp_graph.nodes[i]
+            
+            # Crée le répertoire du node s'il n'existe pas
+            local_node_dir = os.path.join(os.path.join(local_dir, local_node.nodeType), local_node._uid)
+            if os.path.isdir(local_node_dir) or local_node_dir.endswith(("/", "\\")):
+                os.makedirs(local_node_dir, exist_ok=True)
+                
+            print(local_node_dir)
+            
+            tmp_node_dir = os.path.join(tmp_dir, os.path.join(tmp_node.nodeType, tmp_node._uid))
+            
+            output_bucket.sync_remote_to_local(local_node_dir, tmp_node_dir)
+
+        
+        
+        
+        
+        
+    
+    def download_cache_from_node(self):
+        print(" ")
 
     def submit(self, nodes, edges, filepath, submitLabel="{projectName}"):
         
@@ -133,12 +169,12 @@ class QarnotSubmitter(BaseSubmitter):
         # nodes, edges = graph.dfsOnFinish(startNodes=startNodes)
         
         # print(nodes[0].att)
-        
+                
         mg_data = self.load_mg_file(filepath)
         
         tmp_data, image_path = self.update_mg_file(mg_data)
 
-        self.save_tmp_mg_file(tmp_data, image_path)
+        tmp_file_path = self.save_tmp_mg_file(tmp_data, image_path)
 
         if not filepath:
             print("Please provide a path to the Meshroom project or input folder.", file=sys.stderr)
@@ -157,7 +193,7 @@ class QarnotSubmitter(BaseSubmitter):
             # dossier du projet : ex. C:\Users\Nabil\Desktop\MeshroomTest
             project_dir = os.path.dirname(abs_path)
             # nom du fichier dans le conteneur : a.mg
-            container_input_rel = os.path.basename(abs_path)
+            container_input_rel = os.path.basename(tmp_file_path)
             print(f"Detected file input. Project dir: '{project_dir}', file: '{container_input_rel}'")
         else:
             # Si c'est un dossier, on considère que c'est directement le dossier de projet
@@ -198,6 +234,8 @@ class QarnotSubmitter(BaseSubmitter):
         print(f"Uploading input data from '{image_path}' to bucket 'meshroomIn'...")
         input_bucket.sync_directory(image_path)
         print("Upload complete.")
+        
+        self.download_cache_from_bucket("meshroomOut", filepath, tmp_file_path)
 
         # Attacher les buckets
         task.resources.append(input_bucket)   # OK, c'est une liste
@@ -240,8 +278,16 @@ class QarnotSubmitter(BaseSubmitter):
             done = task.wait(10)
 
             if task.state == "Success":
+        
+                # Récupère le fichier mg de meshroomOut 
+                output_bucket.get_file(os.path.basename(tmp_file_path) ,os.path.abspath(tmp_file_path))
+                self.download_cache_from_bucket("meshroomOut", filepath, tmp_file_path)
+                
+                self.get_mg_file()
                 print("-- Task completed successfully.")
                 # Récupérer les résultats dans ./out
                 self.download_path_from_bucket("meshroomOut", "out")
                 print("Output synchronized to local 'out' folder.")
                 done = True
+                
+            

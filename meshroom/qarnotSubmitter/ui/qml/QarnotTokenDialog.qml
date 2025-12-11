@@ -20,13 +20,13 @@ Window {
     property var palette
 
     // Signal et erreur
-    signal acceptToken(string token, var root)
-    signal cancel(var root)
+    signal submitSignal(string token, var root)
+    signal cancelSignal(var root)
 
     property string errorMessage: ""
 
     onClosing: {
-        root.cancel()
+        root.cancelSignal()
     }
 
     // --- FOND DE LA FENÊTRE ---
@@ -124,7 +124,7 @@ Window {
                     color: parent.down && root.palette ? root.palette.mid : (root.palette ? root.palette.button : "#444"); 
                     radius: 4 
                 }
-                onClicked: root.cancel(root); 
+                onClicked: root.cancelSignal(root); 
             }
 
             Button {
@@ -147,7 +147,7 @@ Window {
                     radius: 4
                 }
 
-                onClicked: root.acceptToken(tokenField.text, root);
+                onClicked: root.submitSignal(tokenField.text, root);
             }
         }
     }

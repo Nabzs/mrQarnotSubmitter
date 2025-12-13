@@ -14,7 +14,7 @@ from meshroom.core.submitter import BaseSubmitter
 currentDir = os.path.dirname(os.path.realpath(__file__))
 
 # ⚠️ évite de committer ce token dans un repo public
-token = "99d2c6ea3ebda5293dfd2e4de084297dce7903ee30c2cbd56d47a3759e82a75b058b8f923cc5c0aad0f2358456b989e6b904199775a431b372dc0f7a42983304"
+token = "881daefdc9d361680f814a2e62811ee325d6b10761e757d10c6d4e2b755b26d58266a1e2d6096fff8a75cd14ea36d01dec1c12dbf4f21ac2deda33e9340229f4"
 
 
 class QarnotSubmitter(BaseSubmitter):
@@ -127,39 +127,28 @@ class QarnotSubmitter(BaseSubmitter):
         return False
     
     
-    def download_cache_from_bucket(self, bucket_name, local_file_path, tmp_file_path):
-        conn = qarnot.connection.Connection(client_token=token)
-        output_bucket = self.setup_bucket(conn, bucket_name)
+    def download_cache_from_bucket(self, output_bucket, local_file_path, tmp_file_path):
         
-        tmp_graph = pg.loadGraph(tmp_file_path)
+        remote_graph = pg.loadGraph(tmp_file_path)
         local_graph = pg.loadGraph(local_file_path)
         
         local_dir = os.path.join(os.path.dirname(local_file_path), "MeshroomCache")
-        tmp_dir = "MeshroomCache"
+        remote_dir = "MeshroomCache"
         
         for i in range(len(local_graph.nodes)):
             local_node = local_graph.nodes[i]
-            tmp_node = tmp_graph.nodes[i]
+            remote_node = remote_graph.nodes[i]
             
             # Crée le répertoire du node s'il n'existe pas
             local_node_dir = os.path.join(os.path.join(local_dir, local_node.nodeType), local_node._uid)
-            if os.path.isdir(local_node_dir) or local_node_dir.endswith(("/", "\\")):
-                os.makedirs(local_node_dir, exist_ok=True)
-                
-            print(local_node_dir)
+            os.makedirs(local_node_dir, exist_ok=True)
             
-            tmp_node_dir = os.path.join(tmp_dir, os.path.join(tmp_node.nodeType, tmp_node._uid))
-            
-            output_bucket.sync_remote_to_local(local_node_dir, tmp_node_dir)
+            remote_node_dir = "/".join([remote_dir, remote_node.nodeType, remote_node._uid])
 
-        
-        
-        
-        
-        
-    
-    def download_cache_from_node(self):
-        print(" ")
+            print(local_node_dir, remote_node_dir)
+            
+            output_bucket.sync_remote_to_local(local_node_dir, remote_node_dir)
+
 
     def submit(self, nodes, edges, filepath, submitLabel="{projectName}"):
         
@@ -174,7 +163,7 @@ class QarnotSubmitter(BaseSubmitter):
         
         tmp_data, image_path = self.update_mg_file(mg_data)
 
-        tmp_file_path = self.save_tmp_mg_file(tmp_data, image_path)
+        tmp_file_path = self.save_tmp_mg_file(tmp_data, image_path, "meshroom_423f3335b845457499b7588d76dd386a.mg")
 
         if not filepath:
             print("Please provide a path to the Meshroom project or input folder.", file=sys.stderr)
@@ -235,8 +224,6 @@ class QarnotSubmitter(BaseSubmitter):
         input_bucket.sync_directory(image_path)
         print("Upload complete.")
         
-        self.download_cache_from_bucket("meshroomOut", filepath, tmp_file_path)
-
         # Attacher les buckets
         task.resources.append(input_bucket)   # OK, c'est une liste
         task.results = output_bucket
@@ -280,10 +267,9 @@ class QarnotSubmitter(BaseSubmitter):
             if task.state == "Success":
         
                 # Récupère le fichier mg de meshroomOut 
-                output_bucket.get_file(os.path.basename(tmp_file_path) ,os.path.abspath(tmp_file_path))
-                self.download_cache_from_bucket("meshroomOut", filepath, tmp_file_path)
-                
-                self.get_mg_file()
+                output_bucket.get_file(os.path.basename(tmp_file_path), local=tmp_file_path)
+                self.download_cache_from_bucket(output_bucket, filepath, tmp_file_path)
+
                 print("-- Task completed successfully.")
                 # Récupérer les résultats dans ./out
                 self.download_path_from_bucket("meshroomOut", "out")

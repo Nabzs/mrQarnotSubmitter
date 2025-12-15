@@ -13,13 +13,13 @@ from meshroom.core.submitter import BaseSubmitter
 currentDir = os.path.dirname(os.path.realpath(__file__))
 from .tokenUtils import get_token
 
-def setup_bucket(self, conn, bucket_name):
+def setup_bucket(conn, bucket_name):
     # Récupère ou crée le bucket
     bucket = conn.retrieve_or_create_bucket(bucket_name)
     print(f"Bucket ready: {bucket_name}")
     return bucket
 
-def upload_path_to_bucket(self, bucket_name, folder_path):
+def upload_path_to_bucket(bucket_name, folder_path):
     token = get_token()
     conn = qarnot.connection.Connection(client_token=token)
     destination_bucket = setup_bucket(conn, bucket_name)
@@ -28,7 +28,7 @@ def upload_path_to_bucket(self, bucket_name, folder_path):
     destination_bucket.sync_directory(folder_path)
     print("Sync complete.")
 
-def download_path_from_bucket(self, bucket_name, folder_path):
+def download_path_from_bucket(bucket_name, folder_path):
     token = get_token()
     conn = qarnot.connection.Connection(client_token=token)
     source_bucket = setup_bucket(conn, bucket_name)
@@ -38,7 +38,7 @@ def download_path_from_bucket(self, bucket_name, folder_path):
     print("Sync complete.")        
     
 
-def load_mg_file(self, filepath):
+def load_mg_file(filepath):
     """
     Charge un fichier .mg (JSON Meshroom) et renvoie le dictionnaire Python.
     
@@ -61,7 +61,7 @@ def load_mg_file(self, filepath):
 
     return data
 
-def update_mg_file(self, mg_data):
+def update_mg_file(mg_data):
     updated_data = mg_data
     folder_path = os.path.dirname(mg_data["graph"]["CameraInit_1"]["inputs"]["viewpoints"][0]["path"])
     
@@ -75,7 +75,7 @@ def update_mg_file(self, mg_data):
 
         
 
-def save_tmp_mg_file(self, data, temp_path, filename=None):
+def save_tmp_mg_file(data, temp_path, filename=None):
     """
     Sauvegarde un fichier .mg temporaire.
     
@@ -108,7 +108,7 @@ def save_tmp_mg_file(self, data, temp_path, filename=None):
 
     return temp_path
 
-def delete_tmp_mg_file(self, path):
+def delete_tmp_mg_file(path):
     """
     Supprime un fichier si il existe.
     """
@@ -119,7 +119,7 @@ def delete_tmp_mg_file(self, path):
     return False
 
 
-def download_cache_from_bucket(self, output_bucket, local_file_path, tmp_file_path):
+def download_cache_from_bucket(output_bucket, local_file_path, tmp_file_path):
     
     remote_graph = pg.loadGraph(tmp_file_path)
     local_graph = pg.loadGraph(local_file_path)
@@ -142,7 +142,7 @@ def download_cache_from_bucket(self, output_bucket, local_file_path, tmp_file_pa
         output_bucket.sync_remote_to_local(local_node_dir, remote_node_dir)
 
 
-def launch_task(self, nodes, edges, filepath, submitLabel="{projectName}"):
+def launch_task(nodes, edges, filepath, submitLabel="{projectName}"):
     
     # graph = pg.loadGraph(filepath)
     

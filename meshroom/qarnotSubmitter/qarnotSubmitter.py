@@ -10,7 +10,7 @@ try:
     from meshroom.core.submitter import BaseSubmitter
 
     from .utils.tokenUtils import get_token, isTokenValid, delete_token
-    from .utils.qarnotUtils import launch_task
+    from .utils.qarnotUtils import async_launch_task
     from .ui.dialog import QarnotDialog
 
     class QarnotSubmitter(BaseSubmitter):
@@ -35,7 +35,7 @@ try:
             token = get_token()
 
             if token and isTokenValid(token):
-                launch_task(nodes, edges, filepath, submitLabel="{projectName}")
+                async_launch_task(nodes, edges, filepath, submitLabel="{projectName}")
             else:
                 delete_token()
 

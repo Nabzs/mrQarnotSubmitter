@@ -6,6 +6,7 @@ import tempfile
 from datetime import datetime
 import logging
 import uuid
+import threading
 
 from meshroom.core import graph as pg
 from meshroom.core.submitter import BaseSubmitter
@@ -143,7 +144,6 @@ def download_cache_from_bucket(output_bucket, local_file_path, tmp_file_path):
 
 
 def launch_task(nodes, edges, filepath, submitLabel="{projectName}"):
-    
     # graph = pg.loadGraph(filepath)
     
     # startNodes=None
@@ -268,3 +268,16 @@ def launch_task(nodes, edges, filepath, submitLabel="{projectName}"):
             download_path_from_bucket("meshroomOut", "out")
             print("Output synchronized to local 'out' folder.")
             done = True
+
+def async_launch_task(nodes, edges, filepath, submitLabel="{projectName}"):
+    task_thread = threading.Thread(
+        target=launch_task,
+        args=(nodes, edges, filepath, submitLabel),
+        daemon=True
+    )
+    
+    task_thread.start()
+    
+    print("La tâche a été lancée dans un thread en arrière-plan.")
+
+    return task_thread

@@ -6,10 +6,11 @@ try:
     import keyring
     from keyring.backends import Windows
     keyring.set_keyring(Windows.WinVaultKeyring())
-    from .utils.tokenUtils import get_token, isTokenValid, delete_token
 
     from meshroom.core.submitter import BaseSubmitter
 
+    from .utils.tokenUtils import get_token, isTokenValid, delete_token
+    from .utils.qarnotUtils import launch_task
     from .ui.dialog import QarnotDialog
 
     class QarnotSubmitter(BaseSubmitter):
@@ -21,11 +22,6 @@ try:
             self.reqPackages = []
             self.dialog = QarnotDialog()
             delete_token()
-
-        def launch_task(self, nodes, edges, filepath, submitLabel="{projectName}"):
-            print("La tache démarre pour de vrai YOUHOU")
-            pass
-
 
         def submit(self, nodes, edges, filepath, submitLabel="{projectName}"):
             # Contrairement aux submitters classique, cette fonction submit ne démarre pas nécéssairement la tâche (elle ouvre une popup qui peut échouer)
@@ -39,7 +35,7 @@ try:
             token = get_token()
 
             if token and isTokenValid(token):
-                self.launch_task(nodes, edges, filepath, submitLabel="{projectName}")
+                launch_task(nodes, edges, filepath, submitLabel="{projectName}")
             else:
                 delete_token()
 

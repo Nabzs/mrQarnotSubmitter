@@ -111,16 +111,13 @@ class Menu(QObject):
         menu.setProperty("email", "Chargement ...")
         menu.setProperty("runningTaskCount", "Chargement ...")
         menu.setProperty("storageInfo", "Chargement ...")
-        print("DDDD")
         threading.Thread(target=self.fetch_data, args=(menu,), daemon=True).start()
 
     def fetch_data(self, menu):
             """Cette fonction tourne en arrière-plan"""
-            print("AAAAA")
             token = get_token()
             connected = False
             user_info = None
-            print("BBBBB")
             if token and isTokenValid(token):
                 connected = True
                 user_info = get_user_info(token)
@@ -130,12 +127,10 @@ class Menu(QObject):
             
     def update_ui(self, user_info, connected, menu):
         """Cette fonction est appelée par le signal sur le Thread Principal"""
-        print("WWWWW")
         if connected and user_info:
             menu.setProperty("email", f"Compte : {user_info.email}")
             menu.setProperty("runningTaskCount", f"Tâches en cours : {user_info.running_task_count}")
             menu.setProperty("storageInfo", f"{formatBytes(user_info.used_quota_bytes_bucket)} libres / {formatBytes(user_info.quota_bytes_bucket)}")
-        print("XXXXX")
         menu.setProperty("isConnected", connected)
     
     def get_main_stack_view(self, main_window):

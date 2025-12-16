@@ -153,6 +153,6 @@ Window {
     }
 
     Component.onDestruction : {
-        console.log("AUTODESTRUCTION!!!")
+        //console.log("AUTODESTRUCTION!!!")
     }
 }

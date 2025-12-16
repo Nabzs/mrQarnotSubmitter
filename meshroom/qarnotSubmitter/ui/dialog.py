@@ -1,22 +1,13 @@
 import os
 import logging
+from PySide6.QtCore import QEventLoop, Qt, QUrl
+from PySide6.QtQml import QQmlComponent
+from PySide6.QtGui import QGuiApplication
 import meshroom.ui
 from meshroom.ui.palette import PaletteManager
 
 from ..utils.tokenUtils import isTokenValid, save_token
 
-# Compatibilité Qt
-try:
-    from PySide2.QtCore import QEventLoop, Qt, QUrl
-    from PySide2.QtQml import QQmlComponent
-    from PySide2.QtGui import QGuiApplication
-except ImportError:
-    try:
-        from PySide6.QtCore import QEventLoop, Qt, QUrl
-        from PySide6.QtQml import QQmlComponent
-        from PySide6.QtGui import QGuiApplication
-    except ImportError:
-        logging.error("Impossible de charger PySide.")
 
 class QarnotDialog:
 
@@ -24,7 +15,7 @@ class QarnotDialog:
         self.palette_wrapper = None
         self.engine = None
 
-    def showDialog(self):
+    def show(self):
         self.engine = meshroom.ui.uiInstance.engine
 
         # Chargement du composant QML

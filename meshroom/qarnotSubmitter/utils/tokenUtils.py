@@ -42,3 +42,10 @@ def isTokenValid(token):
     except Exception as e:
         print(e)
         return False
+    
+def get_user_info(token):
+    try:
+        conn = qarnot.connection.Connection(client_token=token)
+        return conn.user_info
+    except:
+        return ""

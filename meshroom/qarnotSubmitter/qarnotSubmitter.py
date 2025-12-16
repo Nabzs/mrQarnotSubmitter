@@ -21,7 +21,6 @@ try:
             super(QarnotSubmitter, self).__init__(name='QarnotRender', parent=parent)
             self.reqPackages = []
             self.dialog = QarnotDialog()
-            delete_token()
 
         def submit(self, nodes, edges, filepath, submitLabel="{projectName}"):
             # Contrairement aux submitters classique, cette fonction submit ne démarre pas nécéssairement la tâche (elle ouvre une popup qui peut échouer)
@@ -36,8 +35,11 @@ try:
 
             if token and isTokenValid(token):
                 async_launch_task(nodes, edges, filepath, submitLabel="{projectName}")
+                return True
             else:
                 delete_token()
+                return False
+            
 
 except Exception as e:
     print(e)

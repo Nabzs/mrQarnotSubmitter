@@ -9,36 +9,23 @@ import uuid
 import threading
 
 from meshroom.core import graph as pg
-from meshroom.core.submitter import BaseSubmitter
 
 currentDir = os.path.dirname(os.path.realpath(__file__))
 from .tokenUtils import get_token
 
-def setup_bucket(conn, bucket_name):
+def setup_bucket(conn, bucket_name, is_output=False):
     # Récupère ou crée le bucket
+    if(is_output):
+        try:
+            bucket = conn.retrieve_bucket(bucket_name)
+            bucket.delete()
+        except:
+            pass
+            
     bucket = conn.retrieve_or_create_bucket(bucket_name)
     print(f"Bucket ready: {bucket_name}")
     return bucket
-
-def upload_path_to_bucket(bucket_name, folder_path):
-    token = get_token()
-    conn = qarnot.connection.Connection(client_token=token)
-    destination_bucket = setup_bucket(conn, bucket_name)
-
-    print(f"Syncing local folder '{folder_path}' to bucket '{bucket_name}'...")
-    destination_bucket.sync_directory(folder_path)
-    print("Sync complete.")
-
-def download_path_from_bucket(bucket_name, folder_path):
-    token = get_token()
-    conn = qarnot.connection.Connection(client_token=token)
-    source_bucket = setup_bucket(conn, bucket_name)
-
-    print(f"Syncing bucket '{bucket_name}' to local folder '{folder_path}'...")
-    source_bucket.sync_remote_to_local(folder_path)
-    print("Sync complete.")        
-    
-
+ 
 def load_mg_file(filepath):
     """
     Charge un fichier .mg (JSON Meshroom) et renvoie le dictionnaire Python.
@@ -59,22 +46,21 @@ def load_mg_file(filepath):
 
     with open(filepath, "r", encoding="utf-8") as f:
         data = json.load(f)
+        
+    print(f"mg file {os.path.basename(filepath)} loaded")
 
     return data
 
 def update_mg_file(mg_data):
     updated_data = mg_data
-    folder_path = os.path.dirname(mg_data["graph"]["CameraInit_1"]["inputs"]["viewpoints"][0]["path"])
+    images_paths = {}
     
     for viewpoint in updated_data["graph"]["CameraInit_1"]["inputs"]["viewpoints"]:
+        images_paths[os.path.basename(viewpoint["path"])] = os.path.abspath(viewpoint["path"])
         viewpoint["path"] = os.path.join("/job/", os.path.basename(viewpoint["path"]))
     
-    return updated_data, folder_path
+    return updated_data, images_paths
 
-# def get_mg_file(self, output_bucket, tmp_file_path):
-#     output_bucket.get_file(os.path.basename(tmp_file_path) ,os.path.abspath(tmp_file_path))
-
-        
 
 def save_tmp_mg_file(data, temp_path, filename=None):
     """
@@ -109,7 +95,7 @@ def save_tmp_mg_file(data, temp_path, filename=None):
 
     return temp_path
 
-def delete_tmp_mg_file(path):
+def delete_file(path):
     """
     Supprime un fichier si il existe.
     """
@@ -117,6 +103,8 @@ def delete_tmp_mg_file(path):
     if os.path.isfile(path):
         os.remove(path)
         return True
+    
+    print("mg temp file deleted")
     return False
 
 
@@ -128,34 +116,31 @@ def download_cache_from_bucket(output_bucket, local_file_path, tmp_file_path):
     local_dir = os.path.join(os.path.dirname(local_file_path), "MeshroomCache")
     remote_dir = "MeshroomCache"
     
-    for i in range(len(local_graph.nodes)):
+    for i in range(len(remote_graph.nodes)):
         local_node = local_graph.nodes[i]
         remote_node = remote_graph.nodes[i]
         
         # Crée le répertoire du node s'il n'existe pas
         local_node_dir = os.path.join(os.path.join(local_dir, local_node.nodeType), local_node._uid)
         os.makedirs(local_node_dir, exist_ok=True)
-        
         remote_node_dir = "/".join([remote_dir, remote_node.nodeType, remote_node._uid])
-
-        print(local_node_dir, remote_node_dir)
         
         output_bucket.sync_remote_to_local(local_node_dir, remote_node_dir)
-
+        
+        # print(f"Cache {local_node.nodeName} downloaded from bucket")
+        
+        
+    
 
 def launch_task(nodes, edges, filepath, submitLabel="{projectName}"):
-    # graph = pg.loadGraph(filepath)
-    
-    # startNodes=None
-    # nodes, edges = graph.dfsOnFinish(startNodes=startNodes)
-    
-    # print(nodes[0].att)
             
     mg_data = load_mg_file(filepath)
     
-    tmp_data, image_path = update_mg_file(mg_data)
+    tmp_data, uploads_paths = update_mg_file(mg_data)
 
-    tmp_file_path = save_tmp_mg_file(tmp_data, image_path, "meshroom_423f3335b845457499b7588d76dd386a.mg")
+    tmp_file_path = save_tmp_mg_file(tmp_data, os.path.abspath("C:/tmp"))
+    
+    uploads_paths[os.path.basename(tmp_file_path)] = tmp_file_path
 
     if not filepath:
         print("Please provide a path to the Meshroom project or input folder.", file=sys.stderr)
@@ -208,27 +193,38 @@ def launch_task(nodes, edges, filepath, submitLabel="{projectName}"):
     input_bucket = setup_bucket(conn, "meshroomIn")
     output_bucket = setup_bucket(conn, "meshroomOut")
 
-    # Sync des données d'entrée : on envoie UNIQUEMENT le dossier du projet
-    if not os.path.isdir(image_path):
-        print(f"Error: project directory '{image_path}' does not exist or is not a directory!", file=sys.stderr)
-        return
-
-    print(f"Uploading input data from '{image_path}' to bucket 'meshroomIn'...")
-    input_bucket.sync_directory(image_path)
+    
+    # Sync files to input bucket: expects a mapping {local_path: remote_name}
+    print("Uploading input data to bucket 'meshroomIn'...")
+    input_bucket.sync_files(uploads_paths)
     print("Upload complete.")
     
     # Attacher les buckets
     task.resources.append(input_bucket)   # OK, c'est une liste
     task.results = output_bucket
-
+        
     # TASK START
+    task._snapshot_whitelist = "^(.*status.*|.*\.mg)"
     task.submit()
+    
+    # StatusData.initExternSubmit()
 
     # MONITORING LOOP
     last_state = ""
     done = False
 
     while not done:
+        try:
+            task.instant()
+        except Exception as e:
+            print(f"Error retrieving task status: {e}", file=sys.stderr)
+
+        try:
+            output_bucket.get_file(os.path.basename(tmp_file_path), local=tmp_file_path)
+            download_cache_from_bucket(output_bucket, filepath, tmp_file_path)
+        except:
+            pass
+        
         # OUTPUT HANDLING
         _latest_out = task.fresh_stdout()
         if _latest_out:
@@ -246,6 +242,7 @@ def launch_task(nodes, edges, filepath, submitLabel="{projectName}"):
             print("-- {}".format(last_state))
 
         if task.state == "FullyExecuting":
+
             instance_info = task.status.running_instances_info.per_running_instance_info[0]
             cpu = instance_info.cpu_usage
             memory = instance_info.current_memory_mb
@@ -253,21 +250,27 @@ def launch_task(nodes, edges, filepath, submitLabel="{projectName}"):
 
         if task.state == "Failure":
             print("-- Errors: %s" % task.errors[0])
+
             done = True
-
-        done = task.wait(10)
-
+        
         if task.state == "Success":
     
             # Récupère le fichier mg de meshroomOut 
-            output_bucket.get_file(os.path.basename(tmp_file_path), local=tmp_file_path)
-            download_cache_from_bucket(output_bucket, filepath, tmp_file_path)
-
             print("-- Task completed successfully.")
-            # Récupérer les résultats dans ./out
-            download_path_from_bucket("meshroomOut", "out")
-            print("Output synchronized to local 'out' folder.")
             done = True
+
+        done = task.wait(10)
+    
+    
+    # Récupérer les résultats en local
+    print("Downloading results from bucket")
+    output_bucket.get_file(os.path.basename(tmp_file_path), local=tmp_file_path)
+    download_cache_from_bucket(output_bucket, filepath, tmp_file_path)
+    print("Resluts synchronized to local folder")
+    
+    delete_file(tmp_file_path)
+    
+    return done
 
 def async_launch_task(nodes, edges, filepath, submitLabel="{projectName}"):
     task_thread = threading.Thread(

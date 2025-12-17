@@ -37,7 +37,7 @@ try:
             token = get_token()
 
             if token and isTokenValid(token):
-                async_launch_task(nodes, edges, filepath, submitLabel="{projectName}")
+                async_launch_task(nodes, edges, filepath, submitLabel)
                 return True
             else:
                 delete_token()

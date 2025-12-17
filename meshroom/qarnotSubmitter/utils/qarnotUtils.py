@@ -108,32 +108,42 @@ def delete_file(path):
     return False
 
 
-def download_cache_from_bucket(output_bucket, local_file_path, tmp_file_path):
-    
-    remote_graph = pg.loadGraph(tmp_file_path)
-    local_graph = pg.loadGraph(local_file_path)
+def download_cache_from_bucket(output_bucket, uid_map, is_snapshot=True):
+    for local_node_dir, remote_node_dir in uid_map.items():        
+        output_bucket.sync_remote_to_local(local_node_dir, remote_node_dir)
+        
+        if not is_snapshot:
+            print(f"{remote_node_dir} downloaded from bucket")
+
+def uid_mapping(local_nodes, local_file_path, tmp_file_path):
+    uid_map = {}
+
+    remote_nodes = pg.loadGraph(tmp_file_path).nodes
     
     local_dir = os.path.join(os.path.dirname(local_file_path), "MeshroomCache")
     remote_dir = "MeshroomCache"
     
-    for i in range(len(remote_graph.nodes)):
-        local_node = local_graph.nodes[i]
-        remote_node = remote_graph.nodes[i]
-        
-        # Crée le répertoire du node s'il n'existe pas
-        local_node_dir = os.path.join(os.path.join(local_dir, local_node.nodeType), local_node._uid)
-        os.makedirs(local_node_dir, exist_ok=True)
-        remote_node_dir = "/".join([remote_dir, remote_node.nodeType, remote_node._uid])
-        
-        output_bucket.sync_remote_to_local(local_node_dir, remote_node_dir)
-        
-        # print(f"Cache {local_node.nodeName} downloaded from bucket")
+    for local_node in local_nodes:
+        for remote_node in remote_nodes:
+            if local_node.name == remote_node.name:
+                # Crée le répertoire du node s'il n'existe pas
+                local_node_dir = os.path.join(os.path.join(local_dir, local_node.nodeType), local_node._uid)
+                os.makedirs(local_node_dir, exist_ok=True)
+                remote_node_dir = "/".join([remote_dir, remote_node.nodeType, remote_node._uid])
+
+                uid_map[local_node_dir] = remote_node_dir
+
+    print("uid fully mapped")
+    
+    return uid_map
+    
         
         
     
 
-def launch_task(nodes, edges, filepath, submitLabel="{projectName}"):
+def launch_task(nodes, edges, filepath, submitLabel):
             
+    # Get the data of the mg project file
     mg_data = load_mg_file(filepath)
     
     tmp_data, uploads_paths = update_mg_file(mg_data)
@@ -172,7 +182,7 @@ def launch_task(nodes, edges, filepath, submitLabel="{projectName}"):
     conn = qarnot.connection.Connection(client_token=token)
 
     profile = "docker-nvidia-batch"
-    task = conn.create_task("meshroom-test", profile, 1)
+    task = conn.create_task(f"meshroom-{os.path.basename(filepath)}", profile, 1)
 
     task.constants["DOCKER_REPO"] = "alicevision/meshroom"
     task.constants["DOCKER_TAG"] = "2025.1.0-av3.3.0-ubuntu22.04-cuda12.1.1"
@@ -212,6 +222,7 @@ def launch_task(nodes, edges, filepath, submitLabel="{projectName}"):
     # MONITORING LOOP
     last_state = ""
     done = False
+    uid_map = {}
 
     while not done:
         try:
@@ -221,7 +232,7 @@ def launch_task(nodes, edges, filepath, submitLabel="{projectName}"):
 
         try:
             output_bucket.get_file(os.path.basename(tmp_file_path), local=tmp_file_path)
-            download_cache_from_bucket(output_bucket, filepath, tmp_file_path)
+            download_cache_from_bucket(output_bucket, uid_map)
         except:
             pass
         
@@ -236,11 +247,6 @@ def launch_task(nodes, edges, filepath, submitLabel="{projectName}"):
             for line in _latest_err.replace("\\n", "\n").splitlines():
                 print(line, file=sys.stderr)
 
-        if task.state != last_state:
-            last_state = task.state
-            print("=" * 10)
-            print("-- {}".format(last_state))
-
         if task.state == "FullyExecuting":
 
             instance_info = task.status.running_instances_info.per_running_instance_info[0]
@@ -248,24 +254,41 @@ def launch_task(nodes, edges, filepath, submitLabel="{projectName}"):
             memory = instance_info.current_memory_mb
             print("-- ", datetime.now(), "| {:.2f} % CPU | {:.2f} MB MEMORY".format(cpu, memory))
 
-        if task.state == "Failure":
+        elif task.state == "Failure":
             print("-- Errors: %s" % task.errors[0])
 
             done = True
         
-        if task.state == "Success":
+        elif task.state == "Success":
     
             # Récupère le fichier mg de meshroomOut 
             print("-- Task completed successfully.")
             done = True
 
-        done = task.wait(10)
+        if task.state != last_state:
+            last_state = task.state
+            print("=" * 10)
+            print("-- {}".format(last_state))
+
+            if format(task.state) == "Submitted":
+                print("Waiting for tasks to be dispached to the qarnot rendering farm (this may take a few minutes)...")
+            if format(task.state) == "FullyDispatched":
+                print("Waiting for tasks to start rendering (this may take a few minutes)...")
+            if format(task.state) == "FullyExecuting":
+                task.instant()
+                output_bucket.get_file(os.path.basename(tmp_file_path), local=tmp_file_path)
+                uid_map = uid_mapping(nodes, filepath, tmp_file_path)
+                print(uid_map)
+
+                
+
+        done = task.wait(5)
     
     
     # Récupérer les résultats en local
     print("Downloading results from bucket")
     output_bucket.get_file(os.path.basename(tmp_file_path), local=tmp_file_path)
-    download_cache_from_bucket(output_bucket, filepath, tmp_file_path)
+    download_cache_from_bucket(output_bucket, uid_map)
     print("Resluts synchronized to local folder")
     
     delete_file(tmp_file_path)

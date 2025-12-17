@@ -9,7 +9,7 @@ from meshroom.ui.palette import PaletteManager
 from ..utils.tokenUtils import isTokenValid, save_token
 
 
-class QarnotDialog:
+class TokenDialog:
 
     def __init__(self):
         self.palette_wrapper = None
@@ -20,7 +20,7 @@ class QarnotDialog:
 
         # Chargement du composant QML
         currentDir = os.path.dirname(os.path.realpath(__file__))
-        qml_file = os.path.join(currentDir, 'qml/QarnotTokenDialog.qml')
+        qml_file = os.path.join(currentDir, 'qml/TokenDialog.qml')
         component = QQmlComponent(self.engine, QUrl.fromLocalFile(qml_file))
 
         if component.status() == QQmlComponent.Error:

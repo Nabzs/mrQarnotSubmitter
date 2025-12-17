@@ -13,6 +13,7 @@ from meshroom.core import graph as pg
 currentDir = os.path.dirname(os.path.realpath(__file__))
 from .tokenUtils import get_token
 
+
 def setup_bucket(conn, bucket_name, is_output=False):
     # Récupère ou crée le bucket
     if(is_output):
@@ -25,7 +26,8 @@ def setup_bucket(conn, bucket_name, is_output=False):
     bucket = conn.retrieve_or_create_bucket(bucket_name)
     print(f"Bucket ready: {bucket_name}")
     return bucket
- 
+
+
 def load_mg_file(filepath):
     """
     Charge un fichier .mg (JSON Meshroom) et renvoie le dictionnaire Python.
@@ -50,6 +52,7 @@ def load_mg_file(filepath):
     print(f"mg file {os.path.basename(filepath)} loaded")
 
     return data
+
 
 def update_mg_file(mg_data):
     updated_data = mg_data
@@ -95,6 +98,7 @@ def save_tmp_mg_file(data, temp_path, filename=None):
 
     return temp_path
 
+
 def delete_file(path):
     """
     Supprime un fichier si il existe.
@@ -114,6 +118,7 @@ def download_cache_from_bucket(output_bucket, uid_map, is_snapshot=True):
         
         if not is_snapshot:
             print(f"{remote_node_dir} downloaded from bucket")
+
 
 def uid_mapping(local_nodes, local_file_path, tmp_file_path):
     uid_map = {}
@@ -136,12 +141,18 @@ def uid_mapping(local_nodes, local_file_path, tmp_file_path):
     print("uid fully mapped")
     
     return uid_map
-    
-        
-        
-    
 
-def launch_task(nodes, edges, filepath, submitLabel):
+
+def get_running_task_for_project(filepath):
+    token = get_token()
+    conn = qarnot.connection.Connection(client_token=token)
+
+    for remote_task in conn.all_tasks():
+        if remote_task.name == f"meshroom-task ({filepath})" and remote_task.state in ['Submitted', 'FullyExecuting', 'FullyDispatched']:
+            return remote_task
+
+
+def start_task(nodes, edges, filepath, submitLabel):
             
     # Get the data of the mg project file
     mg_data = load_mg_file(filepath)
@@ -203,7 +214,6 @@ def launch_task(nodes, edges, filepath, submitLabel):
     input_bucket = setup_bucket(conn, "meshroomIn")
     output_bucket = setup_bucket(conn, "meshroomOut")
 
-    
     # Sync files to input bucket: expects a mapping {local_path: remote_name}
     print("Uploading input data to bucket 'meshroomIn'...")
     input_bucket.sync_files(uploads_paths)
@@ -217,7 +227,15 @@ def launch_task(nodes, edges, filepath, submitLabel):
     task._snapshot_whitelist = "^(.*status.*|.*\.mg)"
     task.submit()
     
-    # StatusData.initExternSubmit()
+    return task
+
+
+def watch_task(task):
+    # BUCKETS
+    token = get_token()
+    conn = qarnot.connection.Connection(client_token=token)
+    input_bucket = setup_bucket(conn, "meshroomIn")
+    output_bucket = setup_bucket(conn, "meshroomOut")
 
     # MONITORING LOOP
     last_state = ""
@@ -280,10 +298,7 @@ def launch_task(nodes, edges, filepath, submitLabel):
                 uid_map = uid_mapping(nodes, filepath, tmp_file_path)
                 print(uid_map)
 
-                
-
         done = task.wait(5)
-    
     
     # Récupérer les résultats en local
     print("Downloading results from bucket")
@@ -295,10 +310,11 @@ def launch_task(nodes, edges, filepath, submitLabel):
     
     return done
 
-def async_launch_task(nodes, edges, filepath, submitLabel="{projectName}"):
+
+def async_watch_task(task):
     task_thread = threading.Thread(
-        target=launch_task,
-        args=(nodes, edges, filepath, submitLabel),
+        target=watch_task,
+        args=(task,),
         daemon=True
     )
     

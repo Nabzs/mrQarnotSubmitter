@@ -3,26 +3,25 @@ try:
     import os
     import logging
     import qarnot
-    import keyring
-    from keyring.backends import Windows
-    keyring.set_keyring(Windows.WinVaultKeyring())
 
     from meshroom.core.submitter import BaseSubmitter
 
     from .utils.tokenUtils import get_token, isTokenValid, delete_token
-    from .utils.qarnotUtils import async_launch_task
-    from .ui.dialog import QarnotDialog
+    from .utils.qarnotUtils import async_watch_task, get_running_task_for_project, start_task
+    from .ui.tokenDialog import TokenDialog
     from .ui.menu import Menu
 
     class QarnotSubmitter(BaseSubmitter):
-        dialog = None 
+        tokenDialog = None 
+        infoDialog = None
         engine = None
         menu = None
 
         def __init__(self, parent=None):
             super(QarnotSubmitter, self).__init__(name='QarnotRender', parent=parent)
             self.reqPackages = []
-            self.dialog = QarnotDialog()
+            self.tokenDialog = TokenDialog()
+
             self.menu = Menu()
         
         def submit(self, nodes, edges, filepath, submitLabel="{projectName}"):
@@ -32,17 +31,27 @@ try:
             token = get_token()
 
             if not token or not isTokenValid(token):
-                self.dialog.show()
+                self.tokenDialog.show()
 
             token = get_token()
 
             if token and isTokenValid(token):
-                async_launch_task(nodes, edges, filepath, submitLabel)
+                # Si la tâche existe, on la récupère plutôt que d'en relancer une nouvelle
+                task = get_running_task_for_project(filepath)
+
+                if not task:
+                    # Sinon on créé une nouvelle tâche
+                    task = start_task(nodes, edges, filepath, submitLabel)
+                    print("Creating new task")
+
+                # Pour finir, on démarre un thread qui observe la tâche et télécharge le résultat
+                async_watch_task(task)
                 return True
             else:
                 delete_token()
                 return False
             
+            return True
 
 except Exception as e:
     print(e)

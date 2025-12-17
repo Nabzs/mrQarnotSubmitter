@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QApplication
 import meshroom.ui
 from meshroom.ui.palette import PaletteManager
 
-from .dialog import QarnotDialog
+from .tokenDialog import TokenDialog
 from ..utils.tokenUtils import get_token, isTokenValid, delete_token, get_user_info
 
 def formatBytes(bytesValue):
@@ -28,13 +28,13 @@ def formatBytes(bytesValue):
 
 class Menu(QObject):
     data_ready = Signal(object, bool, object)
-    dialog = None
+    tokenDialog = None
 
     def __init__(self):
         super().__init__()
         self.injected_menu_ref = None 
         self.retry_count = 0
-        self.dialog = QarnotDialog()
+        self.tokenDialog = TokenDialog()
         
         self.data_ready.connect(self.update_ui)
 
@@ -61,7 +61,7 @@ class Menu(QObject):
         self.attempt_injection()
 
     def onConnect(self, menu):
-        self.dialog.show()
+        self.tokenDialog.show()
         menu.setProperty("isConnected", True)
 
     def onDisconnect(self, menu):
@@ -82,7 +82,7 @@ class Menu(QObject):
         print(f"✅ Barre de menu trouvée : {existing_menu_bar} (Classe: {existing_menu_bar.metaObject().className()})")
 
         currentDir = os.path.dirname(os.path.realpath(__file__))
-        qml_file = os.path.join(currentDir, 'qml/QarnotMenu.qml')
+        qml_file = os.path.join(currentDir, 'qml/SubmitterMenu.qml')
         component = QQmlComponent(engine, QUrl.fromLocalFile(qml_file))
 
         if component.status() != QQmlComponent.Ready:
@@ -130,7 +130,7 @@ class Menu(QObject):
         if connected and user_info:
             menu.setProperty("email", f"Compte : {user_info.email}")
             menu.setProperty("runningTaskCount", f"Tâches en cours : {user_info.running_task_count}")
-            menu.setProperty("storageInfo", f"{formatBytes(user_info.used_quota_bytes_bucket)} libres / {formatBytes(user_info.quota_bytes_bucket)}")
+            menu.setProperty("storageInfo", f"{formatBytes(user_info.used_quota_bytes_bucket)} utilisés / {formatBytes(user_info.quota_bytes_bucket)}")
         menu.setProperty("isConnected", connected)
     
     def get_main_stack_view(self, main_window):

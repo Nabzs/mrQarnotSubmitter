@@ -15,11 +15,15 @@ from .tokenUtils import get_token
 
 def setup_bucket(conn, bucket_name, is_output=False):
     # Récupère ou crée le bucket
+    print(f"Preparing bucket: {bucket_name} (is_output={is_output})")
     if(is_output):
         try:
             bucket = conn.retrieve_bucket(bucket_name)
             bucket.delete()
+            print(f"Output bucket '{bucket_name}' deleted")
+
         except:
+            print(f"No existing output bucket to delete (or delete failed): '{bucket_name}'")
             pass
             
     bucket = conn.retrieve_or_create_bucket(bucket_name)
@@ -39,6 +43,7 @@ def load_mg_file(filepath):
         FileNotFoundError: si le fichier n'existe pas
         json.JSONDecodeError: si le .mg n'est pas un JSON valide
     """
+    print("Loading Meshroom project (.mg) file...")
     filepath = os.path.abspath(filepath)
 
     if not os.path.isfile(filepath):
@@ -127,7 +132,6 @@ def download_cache_from_bucket(output_bucket, local_file_path, tmp_file_path):
         
         output_bucket.sync_remote_to_local(local_node_dir, remote_node_dir)
         
-        # print(f"Cache {local_node.nodeName} downloaded from bucket")
         
         
     
@@ -190,8 +194,8 @@ def launch_task(nodes, edges, filepath, submitLabel="{projectName}"):
     task.constants["DOCKER_CMD"] = (f"/opt/Meshroom_bundle/meshroom_compute {docker_graph}")
 
     # BUCKETS
-    input_bucket = setup_bucket(conn, "meshroomIn")
-    output_bucket = setup_bucket(conn, "meshroomOut")
+    input_bucket = setup_bucket(conn, f"meshroom_{os.path.basename(filepath)}_in")
+    output_bucket = setup_bucket(conn, f"meshroom_{os.path.basename(filepath)}_out", True)
 
     
     # Sync files to input bucket: expects a mapping {local_path: remote_name}
@@ -200,20 +204,24 @@ def launch_task(nodes, edges, filepath, submitLabel="{projectName}"):
     print("Upload complete.")
     
     # Attacher les buckets
+    
     task.resources.append(input_bucket)   # OK, c'est une liste
     task.results = output_bucket
+    print("Buckets attached to task.")
+
         
     # TASK START
     task._snapshot_whitelist = "^(.*status.*|.*\.mg)"
-    task.submit()
-    
-    # StatusData.initExternSubmit()
+    print("Submitting task to Qarnot Cloud...")
 
+    task.submit()
     # MONITORING LOOP
     last_state = ""
     done = False
 
+
     while not done:
+        
         try:
             task.instant()
         except Exception as e:
@@ -240,9 +248,15 @@ def launch_task(nodes, edges, filepath, submitLabel="{projectName}"):
             last_state = task.state
             print("=" * 10)
             print("-- {}".format(last_state))
+            
+            if format(task.state) == "Submitted":
+                print("Waiting for tasks to be dispached to the qarnot rendering farm (this may take a few minutes)...")
+            if format(task.state) == "FullyDispatched":
+                print("Waiting for tasks to start rendering (this may take a few minutes)...")
+
 
         if task.state == "FullyExecuting":
-
+            print("Task is running on qarnot remote worker.")
             instance_info = task.status.running_instances_info.per_running_instance_info[0]
             cpu = instance_info.cpu_usage
             memory = instance_info.current_memory_mb
@@ -254,25 +268,27 @@ def launch_task(nodes, edges, filepath, submitLabel="{projectName}"):
             done = True
         
         if task.state == "Success":
-    
             # Récupère le fichier mg de meshroomOut 
             print("-- Task completed successfully.")
             done = True
 
-        done = task.wait(10)
+        done = task.wait(5)
     
     
     # Récupérer les résultats en local
-    print("Downloading results from bucket")
+    print("Downloading final results from output bucket")
     output_bucket.get_file(os.path.basename(tmp_file_path), local=tmp_file_path)
     download_cache_from_bucket(output_bucket, filepath, tmp_file_path)
-    print("Resluts synchronized to local folder")
+    print("Results synchronized to local folder")
     
     delete_file(tmp_file_path)
-    
+    print("Cleaning temporary files...")
+
+    print("Remote workflow finished.")
     return done
 
 def async_launch_task(nodes, edges, filepath, submitLabel="{projectName}"):
+    print("Launching task in a background thread...")
     task_thread = threading.Thread(
         target=launch_task,
         args=(nodes, edges, filepath, submitLabel),
@@ -281,6 +297,6 @@ def async_launch_task(nodes, edges, filepath, submitLabel="{projectName}"):
     
     task_thread.start()
     
-    print("La tâche a été lancée dans un thread en arrière-plan.")
+    print("Task started in background thread. You can keep using Meshroom.")
 
     return task_thread

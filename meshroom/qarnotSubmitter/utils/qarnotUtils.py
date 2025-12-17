@@ -288,7 +288,7 @@ def launch_task(nodes, edges, filepath, submitLabel):
     # Récupérer les résultats en local
     print("Downloading results from bucket")
     output_bucket.get_file(os.path.basename(tmp_file_path), local=tmp_file_path)
-    download_cache_from_bucket(output_bucket, uid_map)
+    download_cache_from_bucket(output_bucket, uid_map, False)
     print("Resluts synchronized to local folder")
     
     delete_file(tmp_file_path)

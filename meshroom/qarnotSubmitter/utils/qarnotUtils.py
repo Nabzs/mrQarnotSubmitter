@@ -144,18 +144,23 @@ def uid_mapping(local_nodes, local_file_path, tmp_file_path):
 
 
 def get_running_task_for_project(nodes):
+    """
+    Returns a running qarnot task for the corresponding nodes if it exists, or None otherwise
+    
+    :param nodes: List of nodes computed by the remote qarnot task
+    """
     token = get_token()
     conn = qarnot.connection.Connection(client_token=token)
 
     for remote_task in conn.all_tasks():
         if remote_task.state in ['Submitted', 'FullyExecuting', 'FullyDispatched']:
-            differentNodes = False
+            missingNodes = False
             
             for node in nodes:
                 if node._uid not in remote_task.tags:
-                    differentNodes = True
+                    missingNodes = True
 
-            if not differentNodes:
+            if not missingNodes:
                 return remote_task
 
 
@@ -170,30 +175,14 @@ def start_task(nodes, edges, filepath, submitLabel):
     
     uploads_paths[os.path.basename(tmp_filepath)] = tmp_filepath
 
-    if not filepath:
-        print("Please provide a path to the Meshroom project or input folder.", file=sys.stderr)
-        return
-
-    print(f"Starting photogrammetry task for subfolder: {filepath}")
-
-    # Normaliser le chemin fourni par
+    # Normaliser le chemin fourni
     abs_path = os.path.abspath(filepath)
-    if not os.path.exists(abs_path):
-        print(f"Error: path '{abs_path}' does not exist!", file=sys.stderr)
-        return
 
-    # Si filepath est un fichier (ex: a.mg)
-    if os.path.isfile(abs_path):
-        # dossier du projet : ex. C:\Users\Nabil\Desktop\MeshroomTest
-        project_dir = os.path.dirname(abs_path)
-        # nom du fichier dans le conteneur : a.mg
-        container_input_rel = os.path.basename(tmp_filepath)
-        print(f"Detected file input. Project dir: '{project_dir}', file: '{container_input_rel}'")
-    else:
-        # Si c'est un dossier, on considère que c'est directement le dossier de projet
-        project_dir = abs_path
-        container_input_rel = ""  # on utilisera /job directement
-        print(f"Detected directory input. Project dir: '{project_dir}'")
+    # dossier du projet : ex. C:\Users\Nabil\Desktop\MeshroomTest
+    project_dir = os.path.dirname(abs_path)
+    # nom du fichier dans le conteneur : a.mg
+    container_input_rel = os.path.basename(tmp_filepath)
+    print(f"Detected file input. Project dir: '{project_dir}', file: '{container_input_rel}'")
 
     # TASK SETUP
     token = get_token()
@@ -204,29 +193,22 @@ def start_task(nodes, edges, filepath, submitLabel):
         "docker-nvidia-batch",                              # Profil de la tâche
     )
 
+
+    # Type de pricing (on-demand évite que la tâche soit coupée en plein milieu)
+    task.scheduling_type = qarnot.scheduling_type.OnDemandScheduling
+    task.constants["DOCKER_REPO"] = "alicevision/meshroom"
+    task.constants["DOCKER_TAG"] = "2025.1.0-av3.3.0-ubuntu22.04-cuda12.1.1"
+
+    # Commande Meshroom dans le conteneur
+    docker_graph = f"/job/{container_input_rel}"
+    task.constants["DOCKER_CMD"] = (f"/opt/Meshroom_bundle/meshroom_compute {docker_graph}")
+
+    # On enregistre les UIDs des nodes sur la tâche (permet de retrouver la tâche en cas de crash)
+    task.tags = [node._uid for node in nodes]
     task.labels = {
         'tmp_filepath': tmp_filepath,
         'filepath': filepath
     }
-
-    task.tags = [node._uid for node in nodes]
-    task.scheduling_type = qarnot.scheduling_type.OnDemandScheduling
-    print(task.tags)
-
-    task.constants["DOCKER_REPO"] = "alicevision/meshroom"
-    task.constants["DOCKER_TAG"] = "2025.1.0-av3.3.0-ubuntu22.04-cuda12.1.1"
-
-    # Chemin d'input dans le conteneur
-    if container_input_rel:
-        # ex: /job/a.mg
-        docker_graph = f"/job/{container_input_rel}"
-    else:
-        # si on reçoit un dossier, il faudrait décider quel .mg lancer
-        print("Error: a .mg file is required as input.", file=sys.stderr)
-        return
-
-    # Commande Meshroom dans le conteneur
-    task.constants["DOCKER_CMD"] = (f"/opt/Meshroom_bundle/meshroom_compute {docker_graph}")
 
     # BUCKETS
     input_bucket = setup_bucket(conn, "meshroomIn")
@@ -238,7 +220,7 @@ def start_task(nodes, edges, filepath, submitLabel):
     print("Upload complete.")
     
     # Attacher les buckets
-    task.resources.append(input_bucket)   # OK, c'est une liste
+    task.resources.append(input_bucket)
     task.results = output_bucket
         
     # TASK START

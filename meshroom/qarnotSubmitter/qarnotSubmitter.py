@@ -18,9 +18,11 @@ try:
         menu = None
 
         def __init__(self, parent=None):
-            super(QarnotSubmitter, self).__init__(name='QarnotRender', parent=parent)
+            super(QarnotSubmitter, self).__init__(name='QarnotSubmitter', parent=parent)
             self.reqPackages = []
             self.tokenDialog = TokenDialog()
+
+            print("Init submitter")
 
             self.menu = Menu()
         
@@ -37,15 +39,17 @@ try:
 
             if token and isTokenValid(token):
                 # Si la tâche existe, on la récupère plutôt que d'en relancer une nouvelle
-                task = get_running_task_for_project(filepath)
+                task = get_running_task_for_project(nodes)
 
                 if not task:
                     # Sinon on créé une nouvelle tâche
                     task = start_task(nodes, edges, filepath, submitLabel)
                     print("Creating new task")
+                else:
+                    print("Resuming old task")
 
                 # Pour finir, on démarre un thread qui observe la tâche et télécharge le résultat
-                async_watch_task(task)
+                async_watch_task(task, nodes)
                 return True
             else:
                 delete_token()

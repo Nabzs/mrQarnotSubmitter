@@ -143,13 +143,20 @@ def uid_mapping(local_nodes, local_file_path, tmp_file_path):
     return uid_map
 
 
-def get_running_task_for_project(filepath):
+def get_running_task_for_project(nodes):
     token = get_token()
     conn = qarnot.connection.Connection(client_token=token)
 
     for remote_task in conn.all_tasks():
-        if remote_task.name == f"meshroom-task ({filepath})" and remote_task.state in ['Submitted', 'FullyExecuting', 'FullyDispatched']:
-            return remote_task
+        if remote_task.state in ['Submitted', 'FullyExecuting', 'FullyDispatched']:
+            differentNodes = False
+            
+            for node in nodes:
+                if node._uid not in remote_task.tags:
+                    differentNodes = True
+
+            if not differentNodes:
+                return remote_task
 
 
 def start_task(nodes, edges, filepath, submitLabel):
@@ -159,9 +166,9 @@ def start_task(nodes, edges, filepath, submitLabel):
     
     tmp_data, uploads_paths = update_mg_file(mg_data)
 
-    tmp_file_path = save_tmp_mg_file(tmp_data, os.path.abspath("C:/tmp"))
+    tmp_filepath = save_tmp_mg_file(tmp_data, os.path.abspath("C:/tmp"))
     
-    uploads_paths[os.path.basename(tmp_file_path)] = tmp_file_path
+    uploads_paths[os.path.basename(tmp_filepath)] = tmp_filepath
 
     if not filepath:
         print("Please provide a path to the Meshroom project or input folder.", file=sys.stderr)
@@ -180,7 +187,7 @@ def start_task(nodes, edges, filepath, submitLabel):
         # dossier du projet : ex. C:\Users\Nabil\Desktop\MeshroomTest
         project_dir = os.path.dirname(abs_path)
         # nom du fichier dans le conteneur : a.mg
-        container_input_rel = os.path.basename(tmp_file_path)
+        container_input_rel = os.path.basename(tmp_filepath)
         print(f"Detected file input. Project dir: '{project_dir}', file: '{container_input_rel}'")
     else:
         # Si c'est un dossier, on considère que c'est directement le dossier de projet
@@ -192,8 +199,19 @@ def start_task(nodes, edges, filepath, submitLabel):
     token = get_token()
     conn = qarnot.connection.Connection(client_token=token)
 
-    profile = "docker-nvidia-batch"
-    task = conn.create_task(f"meshroom-{os.path.basename(filepath)}", profile, 1)
+    task = conn.create_task(
+        f"meshroom-task ({os.path.basename(abs_path)})",    # Nom de la tâche
+        "docker-nvidia-batch",                              # Profil de la tâche
+    )
+
+    task.labels = {
+        'tmp_filepath': tmp_filepath,
+        'filepath': filepath
+    }
+
+    task.tags = [node._uid for node in nodes]
+    task.scheduling_type = qarnot.scheduling_type.OnDemandScheduling
+    print(task.tags)
 
     task.constants["DOCKER_REPO"] = "alicevision/meshroom"
     task.constants["DOCKER_TAG"] = "2025.1.0-av3.3.0-ubuntu22.04-cuda12.1.1"
@@ -230,7 +248,8 @@ def start_task(nodes, edges, filepath, submitLabel):
     return task
 
 
-def watch_task(task):
+def watch_task(task, nodes):
+
     # BUCKETS
     token = get_token()
     conn = qarnot.connection.Connection(client_token=token)
@@ -242,17 +261,14 @@ def watch_task(task):
     done = False
     uid_map = {}
 
+    tmp_file_path = task.labels["tmp_file_path"]
+    filepath = task.labels["filepath"]
+
     while not done:
         try:
             task.instant()
         except Exception as e:
             print(f"Error retrieving task status: {e}", file=sys.stderr)
-
-        try:
-            output_bucket.get_file(os.path.basename(tmp_file_path), local=tmp_file_path)
-            download_cache_from_bucket(output_bucket, uid_map)
-        except:
-            pass
         
         # OUTPUT HANDLING
         _latest_out = task.fresh_stdout()
@@ -271,6 +287,7 @@ def watch_task(task):
             cpu = instance_info.cpu_usage
             memory = instance_info.current_memory_mb
             print("-- ", datetime.now(), "| {:.2f} % CPU | {:.2f} MB MEMORY".format(cpu, memory))
+            download_cache_from_bucket(output_bucket, uid_map)
 
         elif task.state == "Failure":
             print("-- Errors: %s" % task.errors[0])
@@ -304,17 +321,17 @@ def watch_task(task):
     print("Downloading results from bucket")
     output_bucket.get_file(os.path.basename(tmp_file_path), local=tmp_file_path)
     download_cache_from_bucket(output_bucket, uid_map, False)
-    print("Resluts synchronized to local folder")
+    print("Results synchronized to local folder")
     
     delete_file(tmp_file_path)
     
     return done
 
 
-def async_watch_task(task):
+def async_watch_task(task, nodes):
     task_thread = threading.Thread(
         target=watch_task,
-        args=(task,),
+        args=(task, nodes),
         daemon=True
     )
     

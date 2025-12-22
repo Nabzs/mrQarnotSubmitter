@@ -1,7 +1,5 @@
 import qarnot
 import keyring
-from keyring.backends import Windows
-keyring.set_keyring(Windows.WinVaultKeyring())
 
 # Identifiants pour le stockage
 SERVICE_ID = "qarnot_submitter"

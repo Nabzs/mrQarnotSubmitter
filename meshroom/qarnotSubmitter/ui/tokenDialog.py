@@ -11,6 +11,8 @@ from .baseDialog import BaseDialog
 
 class TokenDialog(BaseDialog):
     qmlPath = 'qml/TokenDialog.qml'
+    message = ""
+    buttonMessage = "Ok"
     loop = None
 
     def __init__(self):
@@ -37,7 +39,7 @@ class TokenDialog(BaseDialog):
         self.dialog.setModality(Qt.ApplicationModal)
 
         self.dialog.setProperty("message", self.message)
-        self.dialog.setProperty("buttonText", self.buttonText)
+        self.dialog.setProperty("buttonText", self.buttonMessage)
 
         # On rend la fonction bloquante (comme ça on attend d'avoir le token pour exécuter la suite)
         self.loop = QEventLoop()

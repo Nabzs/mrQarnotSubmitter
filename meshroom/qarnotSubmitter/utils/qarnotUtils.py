@@ -243,7 +243,7 @@ def watch_task(task, nodes):
     done = False
     uid_map = {}
 
-    tmp_file_path = task.labels["tmp_file_path"]
+    tmp_file_path = task.labels["tmp_filepath"]
     filepath = task.labels["filepath"]
 
     while not done:

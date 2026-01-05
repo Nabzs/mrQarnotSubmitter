@@ -1,27 +1,32 @@
+import logging
+from PySide6.QtCore import QEventLoop
 import os
 import logging
-from PySide6.QtCore import QEventLoop, Qt, QUrl
+from PySide6.QtCore import Qt, QUrl
 from PySide6.QtQml import QQmlComponent
-from PySide6.QtGui import QGuiApplication
 import meshroom.ui
-from meshroom.ui.palette import PaletteManager
 
 from ..utils.tokenUtils import isTokenValid, save_token
+from .baseDialog import BaseDialog
 
-
-class TokenDialog:
+class TokenDialog(BaseDialog):
+    qmlPath = 'qml/TokenDialog.qml'
+    loop = None
 
     def __init__(self):
-        self.palette_wrapper = None
-        self.engine = None
+        super().__init__()
 
     def show(self):
+        #super().show()
         self.engine = meshroom.ui.uiInstance.engine
 
         # Chargement du composant QML
         currentDir = os.path.dirname(os.path.realpath(__file__))
-        qml_file = os.path.join(currentDir, 'qml/TokenDialog.qml')
+        print(self.qmlPath)
+        qml_file = os.path.join(currentDir, self.qmlPath)
         component = QQmlComponent(self.engine, QUrl.fromLocalFile(qml_file))
+
+        # Mise à jour des variables
 
         if component.status() == QQmlComponent.Error:
             logging.error(f"Erreur QML : {component.errorString()}")
@@ -29,8 +34,10 @@ class TokenDialog:
 
         # Création du composant
         self.dialog = component.create()
-        
         self.dialog.setModality(Qt.ApplicationModal)
+
+        self.dialog.setProperty("message", self.message)
+        self.dialog.setProperty("buttonText", self.buttonText)
 
         # On rend la fonction bloquante (comme ça on attend d'avoir le token pour exécuter la suite)
         self.loop = QEventLoop()

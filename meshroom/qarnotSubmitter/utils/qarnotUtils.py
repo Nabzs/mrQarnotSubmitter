@@ -9,6 +9,7 @@ import uuid
 import threading
 
 from meshroom.core import graph as pg
+from meshroom.core.desc.computation import Level
 
 currentDir = os.path.dirname(os.path.realpath(__file__))
 from .tokenUtils import get_token
@@ -165,7 +166,9 @@ def get_running_task_for_project(nodes):
 
 
 def start_task(nodes, edges, filepath, submitLabel):
-            
+    print(submitLabel)
+    nodesToTask = mapEdgesFromOrigin(edges, findOriginNodes(edges))
+
     # Get the data of the mg project file
     mg_data = load_mg_file(filepath)
     
@@ -201,7 +204,7 @@ def start_task(nodes, edges, filepath, submitLabel):
 
     # Commande Meshroom dans le conteneur
     docker_graph = f"/job/{container_input_rel}"
-    task.constants["DOCKER_CMD"] = (f"/opt/Meshroom_bundle/meshroom_compute {docker_graph}")
+    task.constants["DOCKER_CMD"] = (f"/opt/Meshroom_bundle/meshroom_compute {docker_graph} --toNode {nodes[-1].name}")
 
     # On enregistre les UIDs des nodes sur la tâche (permet de retrouver la tâche en cas de crash)
     task.tags = [node._uid for node in nodes]
@@ -297,6 +300,7 @@ def watch_task(task, nodes):
                 uid_map = uid_mapping(nodes, filepath, tmp_file_path)
                 print(uid_map)
 
+
         done = task.wait(5)
     
     # Récupérer les résultats en local
@@ -322,3 +326,48 @@ def async_watch_task(task, nodes):
     print("La tâche a été lancée dans un thread en arrière-plan.")
 
     return task_thread
+
+def isGPU(node):
+    desc = node.nodeDesc  # ← LA BONNE SOURCE
+
+    return (desc.gpu != Level.NONE)
+
+def findOriginNodes(edges):
+    dst = {dst for _, dst in edges}
+    src  = {src for src, _ in edges}
+
+    return list(dst - src)
+
+def isOriginNode(node, edges):
+    dst = {dst for dst, src in edges}
+    return not (node in dst)
+
+def mapEdgesFromOrigin(edges, originNodes):
+    treatedNodes = []
+    nodesToTask = {}
+
+    for originNode in originNodes:
+        treatedNodes.append(originNode)
+        nodesToTask[originNode.name] = [isGPU(originNode), 0]
+
+        for e in [dst for dst, src in edges if src == originNode]:
+            nodesToTask = mapEdges(edges, e, originNode, nodesToTask, 1, treatedNodes)
+        
+        
+    return nodesToTask
+
+def mapEdges(edges, currentNode, previousNode, nodesToTask, depth, treatedNodes):
+
+    treatedNodes.append(currentNode)
+    if isGPU(currentNode) == isGPU(previousNode):
+        nodesToTask[currentNode.name] = nodesToTask.pop(previousNode.name)
+    else:
+        nodesToTask[currentNode.name] = [isGPU(currentNode), depth]
+
+    for nextNode in [dst for dst, src in edges if src == currentNode]:
+        if not nextNode in treatedNodes:
+            nodesToTask = mapEdges(edges, nextNode, currentNode, nodesToTask, depth+1, treatedNodes)
+        elif isGPU(nextNode) == isGPU(currentNode):
+            nodesToTask.pop(currentNode.name)
+        
+    return nodesToTask

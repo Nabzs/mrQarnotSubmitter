@@ -19,14 +19,13 @@ Window {
     // Cette propriété sera remplie par Python
     property var palette
     property string message
-    property string buttonMessage
+    property string buttonText
 
     // Signal et erreur
-    signal submitSignal(var root)
     signal cancelSignal(var root)
 
     onClosing: {
-        root.cancelSignal()
+        root.cancelSignal(root)
     }
 
     // --- FOND DE LA FENÊTRE ---
@@ -57,7 +56,7 @@ Window {
 
             Button {
                 id: validateBtn
-                text: buttonMessage
+                text: buttonText
                 
                 contentItem: Text {
                     text: parent.text
@@ -74,7 +73,7 @@ Window {
                     radius: 4
                 }
 
-                onClicked: root.submitSignal(root);
+                onClicked: root.cancelSignal(root);
             }
         }
     }

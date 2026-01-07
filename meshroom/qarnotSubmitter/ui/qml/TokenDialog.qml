@@ -8,7 +8,7 @@ Window {
     visible: true
     width: 450
     height: 250
-    title: "Qarnot Render"
+    title: "Qarnot Token"
     
     x: (Screen.width - width) / 2
     y: (Screen.height - height) / 2
@@ -52,7 +52,7 @@ Window {
 
         Text {
             // 1. Le lien en HTML
-            text: 'Pas de compte ? <a href="https://console.qarnot.com">Obtenir un token ici</a>'
+            text: 'Pas de compte ? <a href="https://tasq.qarnot.com/settings/access-token">Obtenir un token ici</a>'
             
             // 2. Important : Activer le RichText pour que le HTML soit compris
             textFormat: Text.RichText

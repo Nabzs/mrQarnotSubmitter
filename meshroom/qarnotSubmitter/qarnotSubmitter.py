@@ -9,6 +9,7 @@ try:
     from .utils.tokenUtils import get_token, isTokenValid, delete_token
     from .utils.qarnotUtils import async_watch_task, get_running_task_for_project, start_task
     from .ui.tokenDialog import TokenDialog
+    from .ui.baseDialog import BaseDialog
     from .ui.menu import Menu
 
     class QarnotSubmitter(BaseSubmitter):
@@ -21,6 +22,7 @@ try:
             super(QarnotSubmitter, self).__init__(name='QarnotSubmitter', parent=parent)
             self.reqPackages = []
             self.tokenDialog = TokenDialog()
+            self.baseDialog = BaseDialog()
 
             print("Init submitter")
 
@@ -47,6 +49,8 @@ try:
                     print("Creating new task")
                 else:
                     print("Resuming old task")
+                    self.baseDialog.message = "Un tâche est déjà en cours pour ces noeuds."
+                    self.baseDialog.show()
 
                 # Pour finir, on démarre un thread qui observe la tâche et télécharge le résultat
                 async_watch_task(task, nodes)

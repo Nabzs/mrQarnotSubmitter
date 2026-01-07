@@ -32,5 +32,11 @@ class BaseDialog:
 
         self.dialog.setProperty("message", self.message)
         self.dialog.setProperty("buttonText", self.buttonMessage)
+        
+        self.dialog.cancelSignal.connect(self.on_cancel)
 
         return
+    
+    def on_cancel(self, dialog):
+        print("Closing token dialog")
+        dialog.close()

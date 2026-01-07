@@ -75,7 +75,6 @@ try:
                     self.baseDialog.message = "Erreur ! 😶‍🌫️"
                     self.baseDialog.show()
 
-
                 return True
             else:
                 delete_token()

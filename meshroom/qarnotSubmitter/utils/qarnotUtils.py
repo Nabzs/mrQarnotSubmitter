@@ -237,8 +237,6 @@ def start_task(nodes, edges, filepath, submitLabel):
 
 def watch_task(task, nodes):
 
-    raise qarnot.exceptions.NotEnoughCreditsException
-
     # BUCKETS
     token = get_token()
     conn = qarnot.connection.Connection(client_token=token)

@@ -39,17 +39,17 @@ try:
 
             if token and isTokenValid(token):
                 # Si la tâche existe, on la récupère plutôt que d'en relancer une nouvelle
-                task = get_running_task_for_project(nodes)
+                job = get_running_task_for_project(nodes)
 
-                if not task:
+                if not job:
                     # Sinon on créé une nouvelle tâche
-                    task = start_task(nodes, edges, filepath, submitLabel)
+                    job = start_task(nodes, edges, filepath, submitLabel)
                     print("Creating new task")
                 else:
                     print("Resuming old task")
 
                 # Pour finir, on démarre un thread qui observe la tâche et télécharge le résultat
-                async_watch_task(task, nodes)
+                async_watch_task(job, nodes)
                 return True
             else:
                 delete_token()

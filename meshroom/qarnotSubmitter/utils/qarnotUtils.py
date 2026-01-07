@@ -7,6 +7,7 @@ from datetime import datetime
 import logging
 import uuid
 import threading
+import time
 
 from meshroom.core import graph as pg
 from meshroom.core.desc.computation import Level
@@ -166,8 +167,10 @@ def get_running_task_for_project(nodes):
 
 
 def start_task(nodes, edges, filepath, submitLabel):
-    print(submitLabel)
+    print(edges)
     nodesToTask = mapEdgesFromOrigin(edges, findOriginNodes(edges))
+    print("Nodes to task mapping:", nodesToTask)
+
 
     # Get the data of the mg project file
     mg_data = load_mg_file(filepath)
@@ -185,60 +188,84 @@ def start_task(nodes, edges, filepath, submitLabel):
     project_dir = os.path.dirname(abs_path)
     # nom du fichier dans le conteneur : a.mg
     container_input_rel = os.path.basename(tmp_filepath)
+
+
     print(f"Detected file input. Project dir: '{project_dir}', file: '{container_input_rel}'")
+    # token = get_token()
+    # conn = qarnot.connection.Connection(client_token=token)
 
-    # TASK SETUP
-    token = get_token()
-    conn = qarnot.connection.Connection(client_token=token)
-
-    task = conn.create_task(
-        f"meshroom-task ({os.path.basename(abs_path)})",    # Nom de la tâche
-        "docker-nvidia-batch",                              # Profil de la tâche
-    )
-
-
-    # Type de pricing (on-demand évite que la tâche soit coupée en plein milieu)
-    task.scheduling_type = qarnot.scheduling_type.OnDemandScheduling
-    task.constants["DOCKER_REPO"] = "alicevision/meshroom"
-    task.constants["DOCKER_TAG"] = "2025.1.0-av3.3.0-ubuntu22.04-cuda12.1.1"
-
-    # Commande Meshroom dans le conteneur
-    docker_graph = f"/job/{container_input_rel}"
-    task.constants["DOCKER_CMD"] = (f"/opt/Meshroom_bundle/meshroom_compute {docker_graph} --toNode {nodes[-1].name}")
-
-    # On enregistre les UIDs des nodes sur la tâche (permet de retrouver la tâche en cas de crash)
-    task.tags = [node._uid for node in nodes]
-    task.labels = {
-        'tmp_filepath': tmp_filepath,
-        'filepath': filepath
-    }
+    conn, job = startJobs()
+    
 
     # BUCKETS
     input_bucket = setup_bucket(conn, "meshroomIn")
-    output_bucket = setup_bucket(conn, "meshroomOut")
+    output_bucket = setup_bucket(conn, "meshroomOut", True)
 
     # Sync files to input bucket: expects a mapping {local_path: remote_name}
     print("Uploading input data to bucket 'meshroomIn'...")
     input_bucket.sync_files(uploads_paths)
     print("Upload complete.")
+
+    job.submit()
+
+    print("Job submitted.")
+
+
+
+    # TASK SETUP
+    nTask=0
+    taskList=[]
+    for node_name, (is_gpu, depth) in nodesToTask.items():
+
+        taskList.append(conn.create_task(
+            f"meshroom-task ({os.path.basename(abs_path)}_{nTask})",      # Nom de la tâche
+            "docker-nvidia-batch",                                        # Profil de la tâche
+            job=job
+        ))
+
+        taskList[nTask].auto_delete = True
+
+        # Type de pricing (on-demand évite que la tâche soit coupée en plein milieu)
+        taskList[nTask].scheduling_type = qarnot.scheduling_type.OnDemandScheduling
+        taskList[nTask].constants["DOCKER_REPO"] = "alicevision/meshroom"
+        taskList[nTask].constants["DOCKER_TAG"] = "2025.1.0-av3.3.0-ubuntu22.04-cuda12.1.1"
+
+        # Commande Meshroom dans le conteneur
+        docker_graph = f"/job/{container_input_rel}"
+        taskList[nTask].constants["DOCKER_CMD"] = (f"/opt/Meshroom_bundle/meshroom_compute {docker_graph}")
+        # On enregistre les UIDs des nodes sur la tâche (permet de retrouver la tâche en cas de crash)
+        taskList[nTask].labels = {
+            'tmp_filepath': tmp_filepath,
+            'filepath': filepath
+        }
+        taskList[nTask].tags = [node._uid for node in nodes]
+
+        # # Set up the snapshot whitelist to only include status files and .mg files
+        taskList[nTask]._snapshot_whitelist = "^(.*status.*|.*\.mg)"
+        # taskList[nTask].snapshot(5)
     
-    # Attacher les buckets
-    task.resources.append(input_bucket)
-    task.results = output_bucket
+        # Attacher les buckets
+        taskList[nTask].resources.append(input_bucket)
+        taskList[nTask].results = output_bucket
         
-    # TASK START
-    task._snapshot_whitelist = "^(.*status.*|.*\.mg)"
-    task.submit()
+        # Set task dependencies from previous tasks
+        taskList[nTask].set_task_dependencies_from_tasks(taskList[:-1])
+
+        # Start the task
+        taskList[nTask].submit()
+
+        print(f"Task for node '{node_name}' (GPU: {is_gpu}, depth: {depth}) submitted.")
+
+        nTask += 1
     
-    return task
+    return job
 
 
-def watch_task(task, nodes):
+def watch_task(job, nodes):
 
     # BUCKETS
     token = get_token()
     conn = qarnot.connection.Connection(client_token=token)
-    input_bucket = setup_bucket(conn, "meshroomIn")
     output_bucket = setup_bucket(conn, "meshroomOut")
 
     # MONITORING LOOP
@@ -246,62 +273,63 @@ def watch_task(task, nodes):
     done = False
     uid_map = {}
 
-    tmp_file_path = task.labels["tmp_filepath"]
-    filepath = task.labels["filepath"]
+    for task in job.tasks:
+        if task.state != "Success":
+            tmp_file_path = task.labels['tmp_filepath']
+            filepath = task.labels['filepath']  
 
-    while not done:
-        try:
-            task.instant()
-        except Exception as e:
-            print(f"Error retrieving task status: {e}", file=sys.stderr)
-        
-        # OUTPUT HANDLING
-        _latest_out = task.fresh_stdout()
-        if _latest_out:
-            for line in _latest_out.replace("\\n", "\n").splitlines():
-                print(line)
+            while not done:
+                try:
+                    task.instant()
+                except Exception as e:
+                    print(f"Error retrieving task status: {e}", file=sys.stderr)
+                
+                # OUTPUT HANDLING
+                _latest_out = task.fresh_stdout()
+                if _latest_out:
+                    for line in _latest_out.replace("\\n", "\n").splitlines():
+                        print(line)
 
-        _latest_err = task.fresh_stderr()
-        if _latest_err:
-            for line in _latest_err.replace("\\n", "\n").splitlines():
-                print(line, file=sys.stderr)
+                _latest_err = task.fresh_stderr()
+                if _latest_err:
+                    for line in _latest_err.replace("\\n", "\n").splitlines():
+                        print(line, file=sys.stderr)
 
-        if task.state == "FullyExecuting":
+                if task.state == "FullyExecuting":
+                    instance_info = task.status.running_instances_info.per_running_instance_info[0]
+                    cpu = instance_info.cpu_usage
+                    memory = instance_info.current_memory_mb
+                    print("-- ", datetime.now(), "| {:.2f} % CPU | {:.2f} MB MEMORY".format(cpu, memory))
+                    download_cache_from_bucket(output_bucket, uid_map)
 
-            instance_info = task.status.running_instances_info.per_running_instance_info[0]
-            cpu = instance_info.cpu_usage
-            memory = instance_info.current_memory_mb
-            print("-- ", datetime.now(), "| {:.2f} % CPU | {:.2f} MB MEMORY".format(cpu, memory))
-            download_cache_from_bucket(output_bucket, uid_map)
+                elif task.state == "Failure":
+                    print("-- Errors: %s" % task.errors[0])
 
-        elif task.state == "Failure":
-            print("-- Errors: %s" % task.errors[0])
+                    done = True
+                
+                elif task.state == "Success":
+            
+                    # Récupère le fichier mg de meshroomOut 
+                    print("-- Task completed successfully.")
+                    done = True
 
-            done = True
-        
-        elif task.state == "Success":
-    
-            # Récupère le fichier mg de meshroomOut 
-            print("-- Task completed successfully.")
-            done = True
+                if task.state != last_state:
+                    last_state = task.state
+                    print("=" * 10)
+                    print("-- {}".format(last_state))
 
-        if task.state != last_state:
-            last_state = task.state
-            print("=" * 10)
-            print("-- {}".format(last_state))
-
-            if format(task.state) == "Submitted":
-                print("Waiting for tasks to be dispached to the qarnot rendering farm (this may take a few minutes)...")
-            if format(task.state) == "FullyDispatched":
-                print("Waiting for tasks to start rendering (this may take a few minutes)...")
-            if format(task.state) == "FullyExecuting":
-                task.instant()
-                output_bucket.get_file(os.path.basename(tmp_file_path), local=tmp_file_path)
-                uid_map = uid_mapping(nodes, filepath, tmp_file_path)
-                print(uid_map)
+                    if format(task.state) == "Submitted":
+                        print("Waiting for tasks to be dispached to the qarnot rendering farm (this may take a few minutes)...")
+                    if format(task.state) == "FullyDispatched":
+                        print("Waiting for tasks to start rendering (this may take a few minutes)...")
+                    if format(task.state) == "FullyExecuting":
+                        task.instant()
+                        output_bucket.get_file(os.path.basename(tmp_file_path), local=tmp_file_path)
+                        uid_map = uid_mapping(nodes, filepath, tmp_file_path)
+                        print(uid_map)
 
 
-        done = task.wait(5)
+                done = task.wait(5)
     
     # Récupérer les résultats en local
     print("Downloading results from bucket")
@@ -359,7 +387,7 @@ def mapEdgesFromOrigin(edges, originNodes):
 def mapEdges(edges, currentNode, previousNode, nodesToTask, depth, treatedNodes):
 
     treatedNodes.append(currentNode)
-    if isGPU(currentNode) == isGPU(previousNode):
+    if isGPU(currentNode) == isGPU(previousNode) and previousNode.name in nodesToTask:
         nodesToTask[currentNode.name] = nodesToTask.pop(previousNode.name)
     else:
         nodesToTask[currentNode.name] = [isGPU(currentNode), depth]
@@ -367,7 +395,28 @@ def mapEdges(edges, currentNode, previousNode, nodesToTask, depth, treatedNodes)
     for nextNode in [dst for dst, src in edges if src == currentNode]:
         if not nextNode in treatedNodes:
             nodesToTask = mapEdges(edges, nextNode, currentNode, nodesToTask, depth+1, treatedNodes)
-        elif isGPU(nextNode) == isGPU(currentNode):
+        elif isGPU(nextNode) == isGPU(currentNode) and currentNode.name in nodesToTask:
             nodesToTask.pop(currentNode.name)
         
     return nodesToTask
+
+def startJobs():
+    print("Initializing connection to Qarnot...")
+
+    # Créer la connexion
+    token = get_token()
+    conn = qarnot.connection.Connection(client_token=token)
+
+    print("Creating Meshroom Compute Job on Qarnot...")
+
+    job = conn.create_job(
+        name="meshroom_compute_job",
+        useDependencies=True
+    )
+
+    job.auto_delete = True
+
+    print("Job successfully created.")
+    print("Job UUID:", job.uuid)
+
+    return conn, job

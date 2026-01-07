@@ -43,17 +43,39 @@ try:
                 # Si la tâche existe, on la récupère plutôt que d'en relancer une nouvelle
                 task = get_running_task_for_project(nodes)
 
-                if not task:
-                    # Sinon on créé une nouvelle tâche
-                    task = start_task(nodes, edges, filepath, submitLabel)
-                    print("Creating new task")
-                else:
-                    print("Resuming old task")
-                    self.baseDialog.message = "Un tâche est déjà en cours pour ces noeuds."
+                try:
+                    if not task:
+                        # Sinon on créé une nouvelle tâche
+                        task = start_task(nodes, edges, filepath, submitLabel)
+                        print("Creating new task")
+                        
+                    else:
+                        print("Resuming old task")
+                        self.baseDialog.message = "Un tâche est déjà en cours pour ces noeuds."
+                        self.baseDialog.show()
+
+                    # Pour finir, on démarre un thread qui observe la tâche et télécharge le résultat
+                    async_watch_task(task, nodes)
+                except qarnot.exceptions.UnauthorizedException:
+                    self.baseDialog.message = "Pas autorisé ! 😡 (UnauthorizedException)"
+                    self.baseDialog.show()
+                except qarnot.exceptions.MaxTaskException:
+                    self.baseDialog.message = "Trop de tache ! 😭 (MaxTaskException)"
+                    self.baseDialog.show()
+                except qarnot.exceptions.NotEnoughCreditsException:
+                    self.baseDialog.message = "Pas assez d'argent ! 💸 (NotEnoughCreditsException)"
+                    self.baseDialog.show()
+                except qarnot.exceptions.MaxJobException:
+                    self.baseDialog.message = "Trop de job ! 🤯 (MaxJobException)"
+                    self.baseDialog.show()
+                except qarnot.exceptions.BucketStorageUnavailableException:
+                    self.baseDialog.message = "Probleme de bucket ! 😡 (BucketStorageUnavaibleException)"
+                    self.baseDialog.show()
+                except:
+                    self.baseDialog.message = "Erreur ! 😶‍🌫️"
                     self.baseDialog.show()
 
-                # Pour finir, on démarre un thread qui observe la tâche et télécharge le résultat
-                async_watch_task(task, nodes)
+
                 return True
             else:
                 delete_token()

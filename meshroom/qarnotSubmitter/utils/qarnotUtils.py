@@ -6,10 +6,12 @@ import tempfile
 from datetime import datetime
 import logging
 import uuid
-import threading
+#import threading
+from concurrent.futures import ThreadPoolExecutor
 
 from meshroom.core import graph as pg
 from meshroom.core.desc.computation import Level
+
 
 currentDir = os.path.dirname(os.path.realpath(__file__))
 from .tokenUtils import get_token
@@ -235,6 +237,8 @@ def start_task(nodes, edges, filepath, submitLabel):
 
 def watch_task(task, nodes):
 
+    raise qarnot.exceptions.NotEnoughCreditsException
+
     # BUCKETS
     token = get_token()
     conn = qarnot.connection.Connection(client_token=token)
@@ -315,17 +319,13 @@ def watch_task(task, nodes):
 
 
 def async_watch_task(task, nodes):
-    task_thread = threading.Thread(
-        target=watch_task,
-        args=(task, nodes),
-        daemon=True
-    )
-    
-    task_thread.start()
-    
-    print("La tâche a été lancée dans un thread en arrière-plan.")
+    with ThreadPoolExecutor() as executor:
+        future = executor.submit(watch_task, task, nodes)
+        future.result()
+        
+        print("La tâche a été lancée dans un thread en arrière-plan.")
 
-    return task_thread
+        return future
 
 def isGPU(node):
     desc = node.nodeDesc  # ← LA BONNE SOURCE
